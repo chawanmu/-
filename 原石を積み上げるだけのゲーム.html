@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <title>原石を積み上げるだけのゲーム</title>
+  <style>
+    html,body{height:100%;margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,'Hiragino Kaku Gothic ProN',Meiryo,sans-serif;background:#08111a;color:#e6eef8}
+    .wrap{height:100%;display:flex;flex-direction:column}
+    header{padding:12px 16px;display:flex;flex-direction:column;align-items:flex-start;gap:4px}
+    #canvasBox{flex:1;display:flex;align-items:center;justify-content:center;position:relative}
+    canvas{background:linear-gradient(180deg,#0f2638,#041019);border-radius:10px;box-shadow:0 8px 20px rgba(0,0,0,0.6);max-width:100%;height:auto}
+    .controls{padding:12px 16px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+    button{background:#1e90ff;border:none;color:white;padding:12px 16px;border-radius:10px;font-size:16px;cursor:pointer}
+    .right{margin-left:auto;font-size:16px}
+    #gameOverOverlay{
+      position:absolute;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;
+      background:rgba(0,0,0,0.7);color:#fff;font-size:32px;font-weight:bold;z-index:10;display:none;
+      flex-direction:column;text-align:center;gap:10px;
+    }
+  </style>
+</head>
+<body>
+  <audio id="bgm" src="bgm.mp3" loop autoplay></audio>
+
+  <div class="wrap">
+    <header>
+      <h2 style="margin:0">原石を積み上げるだけのゲーム</h2>
+      <div class="info">クリック/タップで落ちてきます。台座からこぼれたらゲームオーバー。</div>
+    </header>
+    <div id="canvasBox">
+      <canvas id="game" width="900" height="600"></canvas>
+      <div id="gameOverOverlay">
+        <div id="gameOverText">GAME OVER</div>
+        <div id="scoreText"></div>
+        <div id="rankingText"></div>
+        <small style="font-size:20px;">Escでリセット</small>
+      </div>
+    </div>
+    <div class="controls">
+      <button id="reset">リセット (Esc)</button>
+      <div class="right">積んだ個数: <span id="count">0</span></div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/matter-js@0.19.0/build/matter.min.js"></script>
+  <script>
+  const { Engine, Render, World, Bodies, Events, Composite, Vertices } = Matter;
+  const canvas = document.getElementById('game');
+  const engine = Engine.create();
+  const world = engine.world;
+  engine.gravity.y = 1.0;
+
+  function resizeCanvas(){
+    const parent = canvas.parentElement;
+    canvas.width = parent.clientWidth;
+    canvas.height = parent.clientHeight;
+  }
+  window.addEventListener('resize', resizeCanvas);
+  resizeCanvas();
+
+  const render = Render.create({ canvas: canvas, engine: engine, options: { width: canvas.width, height: canvas.height, wireframes: false, background: 'transparent' }});
+
+  // 平面台座を1.5倍に設定
+  const pedestalWidth = 300 * 1.5;
+  const pedestalHeight = 30;
+  const pedestal = Bodies.rectangle(canvas.width/2, canvas.height-20, pedestalWidth, pedestalHeight, { isStatic:true, render:{ fillStyle:'#556677' }});
+
+  // 左右のストッパー
+  const stopperSize = 30;
+  const leftStopper = Bodies.rectangle(canvas.width/2 - pedestalWidth/2 - stopperSize/2, canvas.height - 20 - pedestalHeight/2, stopperSize, stopperSize, { isStatic:true, render:{ fillStyle:'#445566' }});
+  const rightStopper = Bodies.rectangle(canvas.width/2 + pedestalWidth/2 + stopperSize/2, canvas.height - 20 - pedestalHeight/2, stopperSize, stopperSize, { isStatic:true, render:{ fillStyle:'#445566' }});
+
+  const leftWall = Bodies.rectangle(-40, canvas.height/2, 80, canvas.height, { isStatic: true, render: { visible:false }});
+  const rightWall = Bodies.rectangle(canvas.width+40, canvas.height/2, 80, canvas.height, { isStatic: true, render: { visible:false }});
+
+  World.add(world, [pedestal, leftStopper, rightStopper, leftWall, rightWall]);
+
+  Render.run(render);
+  Engine.run(engine);
+
+  let spawned = [];
+  let gameOver = false;
+  const starImgSrc = 'https://i.imgur.com/A4LmI6R.png';
+  const squareImgSrc = 'https://i.imgur.com/XEQ1KNV.png';
+
+  function createStarVertices(type, size) {
+    const half = size / 2;
+    if(type === 'cross') {
+      return [
+        {x:-half/2,y:-half}, {x:half/2,y:-half}, {x:half/2,y:-half/2}, {x:half,y:-half/2},
+        {x:half,y:half/2}, {x:half/2,y:half/2}, {x:half/2,y:half}, {x:-half/2,y:half},
+        {x:-half/2,y:half/2}, {x:-half,y:half/2}, {x:-half,y:-half/2}, {x:-half/2,y:-half/2}
+      ];
+    } else if(type === 'diamond') {
+      return [
+        {x:0,y:-half}, {x:half/2,y:-half/2}, {x:half,y:0}, {x:half/2,y:half/2},
+        {x:0,y:half}, {x:-half/2,y:half/2}, {x:-half,y:0}, {x:-half/2,y:-half/2}
+      ];
+    }
+    return [];
+  }
+
+  function spawnAt(x, y){
+    if(gameOver) return;
+    const size = 25;
+    let type = '';
+    let vertices = [];
+    let imgSrc = '';
+
+    const rand = Math.random();
+    if(rand < 0.45){ type='diamond'; vertices=createStarVertices(type,size); imgSrc=starImgSrc; }
+    else if(rand < 0.9){ type='cross'; vertices=createStarVertices(type,size); imgSrc=starImgSrc; }
+    else { type='square'; vertices=Vertices.fromPath(`0 0 ${size} 0 ${size} ${size} 0 ${size}`); imgSrc=squareImgSrc; }
+
+    const body = Bodies.fromVertices(x, y, [vertices], {
+      restitution:0.1,
+      friction:0.2,
+      render:{ sprite:{ texture: imgSrc, xScale:0.5, yScale:0.5 }}
+    }, true);
+
+    World.add(world, body);
+    spawned.push(body);
+    updateCount();
+  }
+
+  function pointerSpawn(e){
+    const rect = canvas.getBoundingClientRect();
+    let x = e.clientX || (e.touches && e.touches[0].clientX);
+    x = (x - rect.left)*(canvas.width/rect.width);
+    spawnAt(x, -40);
+  }
+
+  canvas.addEventListener('click', pointerSpawn);
+  canvas.addEventListener('touchstart', pointerSpawn);
+
+  function reset(){
+    for(const b of spawned){ Composite.remove(world,b); }
+    spawned=[];
+    updateCount();
+    gameOver=false;
+    document.getElementById('gameOverOverlay').style.display='none';
+  }
+  document.getElementById('reset').addEventListener('click', reset);
+
+  function updateCount(){ document.getElementById('count').textContent=spawned.length; }
+  function updateHighScores(newScore){
+    let scores=JSON.parse(localStorage.getItem('scores')||'[]');
+    scores.push(newScore);
+    scores.sort((a,b)=>b-a);
+    scores=scores.slice(0,5);
+    localStorage.setItem('scores',JSON.stringify(scores));
+    return scores;
+  }
+
+  Events.on(engine,'afterUpdate',()=>{
+    if(gameOver) return;
+    for(const b of spawned){
+      if(b.position.y > (canvas.height - pedestalHeight)){
+        if(b.position.x < (canvas.width/2 - pedestalWidth/2) || b.position.x > (canvas.width/2 + pedestalWidth/2)){
+          triggerGameOver(); break;
+        }
+      }
+    }
+  });
+
+  function triggerGameOver(){
+    gameOver=true;
+    const score=spawned.length;
+    const scores=updateHighScores(score);
+    document.getElementById('scoreText').textContent=`You stacked ${score} blocks!`;
+    document.getElementById('rankingText').innerHTML='Ranking:<br>'+scores.map((s,i)=>`${i+1}. ${s}`).join('<br>');
+    document.getElementById('gameOverOverlay').style.display='flex';
+  }
+  </script>
+</body>
+</html>
