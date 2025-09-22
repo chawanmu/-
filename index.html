@@ -21,7 +21,7 @@
   </style>
 </head>
 <body>
-  <audio id="bgm" src="bgm.mp3" loop autoplay></audio>
+  <audio id="bgm" src="bgm.mp3" loop></audio>
 
   <div class="wrap">
     <header>
@@ -61,12 +61,12 @@
 
   const render = Render.create({ canvas: canvas, engine: engine, options: { width: canvas.width, height: canvas.height, wireframes: false, background: 'transparent' }});
 
-  // 平面台座を1.5倍に設定
-  const pedestalWidth = 300 * 1.5;
+  // 平面台座を半分の大きさに設定
+  const pedestalWidth = 300 * 0.75;
   const pedestalHeight = 30;
   const pedestal = Bodies.rectangle(canvas.width/2, canvas.height-20, pedestalWidth, pedestalHeight, { isStatic:true, render:{ fillStyle:'#556677' }});
 
-  // 左右のストッパー
+  // 左右のストッパーを台座の左右端に合わせる
   const stopperSize = 30;
   const leftStopper = Bodies.rectangle(canvas.width/2 - pedestalWidth/2 - stopperSize/2, canvas.height - 20 - pedestalHeight/2, stopperSize, stopperSize, { isStatic:true, render:{ fillStyle:'#445566' }});
   const rightStopper = Bodies.rectangle(canvas.width/2 + pedestalWidth/2 + stopperSize/2, canvas.height - 20 - pedestalHeight/2, stopperSize, stopperSize, { isStatic:true, render:{ fillStyle:'#445566' }});
